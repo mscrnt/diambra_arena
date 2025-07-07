@@ -71,7 +71,7 @@ class EnvironmentSettingsBase:
     pb_model: model = None
 
     episode_settings = ["seed", "difficulty", "continue_game", "show_final", "tower", "role",
-                        "characters", "outfits", "super_art", "fighting_style", "ultimate_style"]
+                        "characters", "outfits", "super_art", "fighting_style", "ultimate_style", "speed_mode"]
 
     # Transforming env settings dict to pb request
     def get_pb_request(self, init=False):
@@ -217,8 +217,9 @@ class EnvironmentSettings(EnvironmentSettingsBase):
     characters: Union[None, str, Tuple[str], Tuple[str, str], Tuple[str, str, str]] = None
     outfits: int = 1
     super_art: Union[None, int] = None  # SFIII Specific
-    fighting_style: Union[None, int] = None # KOF Specific
+    fighting_style: Union[None, int] = None # KOF, MVSC Specific
     ultimate_style: Union[None, Tuple[int, int, int]] = None # KOF Specific
+    speed_mode: Union[None, int] = None # MVSC, XMVSF Specific
 
     def _sanity_check(self):
         super()._sanity_check()
@@ -241,10 +242,15 @@ class EnvironmentSettings(EnvironmentSettingsBase):
             check_val_in_list("characters[{}]".format(idx), self.characters[idx], char_list)
         check_num_in_range("outfits", self.outfits, self.games_dict[self.game_id]["outfits"])
         check_val_in_list("super_art", self.super_art, [None, 1, 2, 3])
-        check_val_in_list("fighting_style", self.fighting_style, [None, 1, 2, 3])
+        if self.game_id == "kof98umh":
+            check_val_in_list("fighting_style", self.fighting_style, [None, 1, 2, 3])
+        else:
+            check_val_in_list("fighting_style", self.fighting_style, [None, 1, 2])
+
         if self.ultimate_style is not None:
             for idx in range(3):
                 check_val_in_list("ultimate_style[{}]".format(idx), self.ultimate_style[idx], [1, 2])
+        check_val_in_list("speed_mode", self.speed_mode, [None, 1, 2])
 
     def _get_action_spaces(self):
         return [self.action_space]
@@ -266,9 +272,14 @@ class EnvironmentSettings(EnvironmentSettingsBase):
         if self.super_art is None:
             self.super_art = random.choice(list(range(1, 4)))
         if self.fighting_style is None:
-            self.fighting_style = random.choice(list(range(1, 4)))
+            maxFightingStyle = 3
+            if self.game_id == "kof98umh":
+                maxFightingStyle = 4
+            self.fighting_style = random.choice(list(range(1, maxFightingStyle)))
         if self.ultimate_style is None:
             self.ultimate_style = tuple([random.choice(list(range(1, 3))) for _ in range(3)])
+        if self.speed_mode is None:
+            self.speed_mode = random.choice(list(range(1, 3)))
 
     def _get_player_specific_values(self):
         player_settings = model.EnvSettings.EpisodeSettings.PlayerSettings(
@@ -277,7 +288,8 @@ class EnvironmentSettings(EnvironmentSettingsBase):
             outfits=self.outfits,
             super_art=self.super_art,
             fighting_style=self.fighting_style,
-            ultimate_style={"dash": self.ultimate_style[0], "evade": self.ultimate_style[1], "bar": self.ultimate_style[2]}
+            ultimate_style={"dash": self.ultimate_style[0], "evade": self.ultimate_style[1], "bar": self.ultimate_style[2]},
+            speed_mode=self.speed_mode,
         )
 
         return [player_settings]
@@ -296,8 +308,9 @@ class EnvironmentSettingsMultiAgent(EnvironmentSettingsBase):
                       Tuple[Tuple[str, str, str], Tuple[str, str, str]]] = (None, None)
     outfits: Tuple[int, int] = (1, 1)
     super_art: Union[Tuple[None, None], Tuple[int, int]] = (None, None)  # SFIII Specific
-    fighting_style: Union[Tuple[None, None], Tuple[int, int]] = (None, None)  # KOF Specific
+    fighting_style: Union[Tuple[None, None], Tuple[int, int]] = (None, None)  # KOF, MVSC Specific
     ultimate_style: Union[Tuple[None, None], Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = (None, None)  # KOF Specific
+    speed_mode: Union[Tuple[None, None], Tuple[int, int]] = (None, None)  # MVSC, XMVSF Specific
 
     def _sanity_check(self):
         super()._sanity_check()
@@ -325,10 +338,14 @@ class EnvironmentSettingsMultiAgent(EnvironmentSettingsBase):
                 check_val_in_list("characters[{}][{}]".format(idx, jdx), self.characters[idx][jdx], char_list)
             check_num_in_range("outfits[{}]".format(idx), self.outfits[idx], self.games_dict[self.game_id]["outfits"])
             check_val_in_list("super_art[{}]".format(idx), self.super_art[idx], [None, 1, 2, 3])
-            check_val_in_list("fighting_style[{}]".format(idx), self.fighting_style[idx], [None, 1, 2, 3])
+            if self.game_id == "kof98umh":
+                check_val_in_list("fighting_style[{}]".format(idx), self.fighting_style[idx], [None, 1, 2, 3])
+            else:
+                check_val_in_list("fighting_style[{}]".format(idx), self.fighting_style[idx], [None, 1, 2])
             if self.ultimate_style[idx] is not None:
                 for jdx in range(3):
                     check_val_in_list("ultimate_style[{}][{}]".format(idx, jdx), self.ultimate_style[idx][jdx], [1, 2])
+            check_val_in_list("speed_mode[{}]".format(idx), self.speed_mode[idx], [None, 1, 2])
 
     def _process_random_values(self):
         super()._process_random_values()
@@ -356,8 +373,12 @@ class EnvironmentSettingsMultiAgent(EnvironmentSettingsBase):
                 self.role = (self.role[0], Roles.P1 if self.role[0] == Roles.P2 else Roles.P2)
 
         self.super_art = tuple([random.choice(list(range(1, 4))) if self.super_art[idx] is None else self.super_art[idx] for idx in range(2)])
-        self.fighting_style = tuple([random.choice(list(range(1, 4))) if self.fighting_style[idx] is None else self.fighting_style[idx] for idx in range(2)])
+        maxFightingStyle = 3
+        if self.game_id == "kof98umh":
+            maxFightingStyle = 4
+        self.fighting_style = tuple([random.choice(list(range(1, maxFightingStyle))) if self.fighting_style[idx] is None else self.fighting_style[idx] for idx in range(2)])
         self.ultimate_style = tuple([[random.choice(list(range(1, 3))) for _ in range(3)] if self.ultimate_style[idx] is None else self.ultimate_style[idx] for idx in range(2)])
+        self.speed_mode = tuple([random.choice(list(range(1, 3))) if self.speed_mode[idx] is None else self.speed_mode[idx] for idx in range(2)])
 
     def _get_action_spaces(self):
         return [action_space for action_space in self.action_space]
@@ -372,7 +393,8 @@ class EnvironmentSettingsMultiAgent(EnvironmentSettingsBase):
                 outfits=self.outfits[idx],
                 super_art=self.super_art[idx],
                 fighting_style=self.fighting_style[idx],
-                ultimate_style={"dash": self.ultimate_style[idx][0], "evade": self.ultimate_style[idx][1], "bar": self.ultimate_style[idx][2]}
+                ultimate_style={"dash": self.ultimate_style[idx][0], "evade": self.ultimate_style[idx][1], "bar": self.ultimate_style[idx][2]},
+                speed_mode=self.speed_mode[idx],
             )
 
             players_env_settings.append(player_settings)
@@ -407,7 +429,7 @@ class WrappersSettings:
         check_num_in_range("normalization_factor", self.normalization_factor, [0.0, 1000000])
         check_type("clip_reward", self.clip_reward, bool, admit_none=False)
         check_type("no_attack_buttons_combinations", self.no_attack_buttons_combinations, bool, admit_none=False)
-        check_val_in_list("frame_shape[2]", self.frame_shape[2], [0, 1, 3])
+        check_val_in_list("frame_shape[2]", self.frame_shape[2], [0, 1])
         check_num_in_range("frame_shape[0]", self.frame_shape[0], [0, MAX_FRAME_RES])
         check_num_in_range("frame_shape[1]", self.frame_shape[1], [0, MAX_FRAME_RES])
         if (min(self.frame_shape[0], self.frame_shape[1]) == 0 and
